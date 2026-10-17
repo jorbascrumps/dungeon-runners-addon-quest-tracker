@@ -7,6 +7,8 @@
 
 Keeps pinned quests and their progress in view while you play.
 
+<img width="1280" height="705" alt="A sample screen of the Quest Tracker addon" src="https://github.com/user-attachments/assets/fec02158-678f-4207-b2d0-4eb1fa914a1e" />
+
 ## Installation
 
 1. Install [Dungeon-Runners-Addons](https://github.com/MaxmilianBaron/Dungeon-Runners-Addons) if you haven't already. Quest Tracker runs on its loader.
