@@ -1,0 +1,3 @@
+[submodule "external/Dungeon-Runners-Addons"]
+	path = external/Dungeon-Runners-Addons
+	url = https://github.com/MaxmilianBaron/Dungeon-Runners-Addons.git
