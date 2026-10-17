@@ -20,11 +20,7 @@ namespace {
     volatile LONG options[OptionCount] = {1, 1};
     std::set<std::string> trackedPaths;      // definition paths of tracked quests; worker thread only
     std::wstring settingsPath;
-    std::string problem;                     // appended to the status line
     uintptr_t image = 0;
-
-    SRWLOCK statusLock = SRWLOCK_INIT;
-    std::string status = "Starting...";
 
     void LoadSettings() {
         for (uint32_t i = 0; i < OptionCount; ++i) options[i] = GetPrivateProfileIntW(Section, Keys[i], 1, settingsPath.c_str()) ? 1 : 0;
@@ -50,12 +46,6 @@ namespace {
         WritePrivateProfileStringW(TrackedSection, key.c_str(), on ? L"1" : nullptr, settingsPath.c_str());   // null deletes
     }
 
-    void SetStatus(std::string text) {
-        AcquireSRWLockExclusive(&statusLock);
-        status = std::move(text);
-        ReleaseSRWLockExclusive(&statusLock);
-    }
-
     // Track clicks from the overlay: quest address -> definition path, saved at once.
     void ApplyToggles(const std::vector<Quest>& quests) {
         for (uintptr_t address : overlay::TakeToggles()) {
@@ -74,11 +64,9 @@ namespace {
             overlay::View view;
             view.background = options[PanelBackground] != 0;
             const uintptr_t player = options[Enabled] ? game::LocalPlayer(image) : 0;   // off: no reads, nothing drawn
-            std::string state = options[Enabled] ? "Waiting for you to enter the world." : "Off.";
             if (player) {
                 view.visible = true;
                 view.journal = journal::Locate();
-                state = "No quests found yet.";
                 if (ScanQuests(player, quests)) {
                     ApplyToggles(quests);
                     for (const auto& quest : quests) {
@@ -86,11 +74,9 @@ namespace {
                         view.tracked.push_back(quest.address);
                         view.lines.push_back({quest.title.empty() ? quest.path : quest.title, quest.objectives});
                     }
-                    state = "Tracking " + std::to_string(view.lines.size()) + " quest(s).";
                 }
             }
-            const bool hooked = overlay::Hook(reinterpret_cast<IDirect3DDevice9*>(game::Device(image)));   // true at once after the first success
-            SetStatus(state + (hooked ? "" : " Panel: not hooked yet.") + problem);
+            overlay::Hook(reinterpret_cast<IDirect3DDevice9*>(game::Device(image)));   // a no-op once hooked
             overlay::Publish(std::move(view));
         }
     }
@@ -131,22 +117,9 @@ ADDON_EXPORT BOOL WINAPI DungeonRunnersAddonInitialize(const ExtensionHost* host
     image = game::Image();
     LoadSettings();
     LoadTracked();
-    if (!game::Supported(image)) {
-        SetStatus("Unsupported game build. Tracker disabled.");
-        return TRUE;   // still registered, so the status says why
-    }
-    // Built by the official installer from the player's game files; the panel art and font come from it.
-    const std::wstring skin = std::wstring(host->gameDirectory ? host->gameDirectory : L"") + L"\\Addons\\Runtime\\ui.bin";
-    if (!overlay::LoadSkin(skin)) problem = " No panel: Addons\\Runtime\\ui.bin not found; install the official addons.";
+    if (!game::Supported(image)) return TRUE;   // another game build: stay registered, draw nothing
+    // ui.bin is built by the official installer from the player's game files; without it nothing is drawn.
+    if (!overlay::LoadSkin(std::wstring(host->gameDirectory ? host->gameDirectory : L"") + L"\\Addons\\Runtime\\ui.bin")) return TRUE;
     if (HANDLE thread = CreateThread(nullptr, 0, Worker, nullptr, 0, nullptr)) CloseHandle(thread);
     return TRUE;
-}
-
-ADDON_EXPORT BOOL WINAPI DungeonRunnersAddonGetStatus(char* text, uint32_t capacity) {
-    if (!text || capacity < 2) return FALSE;
-    AcquireSRWLockShared(&statusLock);
-    std::strncpy(text, status.c_str(), capacity - 1);
-    text[capacity - 1] = 0;
-    ReleaseSRWLockShared(&statusLock);
-    return text[0] != 0;
 }
